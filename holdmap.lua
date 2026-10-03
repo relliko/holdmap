@@ -2,7 +2,7 @@
 * holdmap
 *
 * Shows the zone map while a key is held (Shift+M by default) and closes it when the key is let
-* go: pressing runs /map, and letting go presses Escape for the game, but only while the game's
+* go (or, in toggle mode, on the next press): pressing runs /map, and closing presses Escape for the game, but only while the game's
 * map menu is open. It never presses any other key, and offers no way to send keys of your
 * choosing.
 *
@@ -11,8 +11,8 @@
 
 addon.name    = 'holdmap';
 addon.author  = 'Relli';
-addon.version = '0.1';
-addon.desc    = 'Shows the map while a key is held and closes it on release.';
+addon.version = '0.2';
+addon.desc    = 'Shows the map while a key is held (or toggles it) and closes it on release.';
 addon.link    = '';
 
 require('common');
@@ -25,6 +25,7 @@ local safemem  = require('safemem');
 local defaults = T{
     key = 'M',
     mod = 'shift',
+    mode = 'hold',
 };
 
 local hm = {
@@ -47,7 +48,10 @@ local function apply()
     if (core.MODS[hm.settings.mod] == nil) then
         hm.settings.mod = 'shift';
     end
-    hm.s = core.new(dik, hm.settings.mod);
+    if (hm.settings.mode ~= 'toggle') then
+        hm.settings.mode = 'hold';
+    end
+    hm.s = core.new(dik, hm.settings.mod, hm.settings.mode);
     hm.vk = keyboard():D2V(dik) or 0;
     return true;
 end
@@ -83,7 +87,7 @@ end
 
 ashita.events.register('load', 'holdmap_load', function ()
     if (not apply()) then
-        hm.settings.key, hm.settings.mod = defaults.key, defaults.mod;
+        hm.settings.key, hm.settings.mod, hm.settings.mode = defaults.key, defaults.mod, defaults.mode;
         apply();
     end
 end);
@@ -159,9 +163,28 @@ ashita.events.register('command', 'holdmap_command', function (e)
         hm.settings.mod = args[3]:lower();
         apply();
         settings.save();
+    elseif (#args >= 2 and args[2]:any('mode', 'toggle', 'hold')) then
+        local mode = args[2]:lower();
+        if (mode == 'mode') then
+            mode = (args[3] or ''):lower();
+            if (mode == '') then
+                mode = hm.settings.mode == 'toggle' and 'hold' or 'toggle';
+            end
+        end
+        if (mode ~= 'hold' and mode ~= 'toggle') then
+            print(chat.header(addon.name):append(chat.error('Mode must be hold or toggle.')));
+            return;
+        end
+        hm.settings.mode = mode;
+        apply();
+        settings.save();
     elseif (#args >= 2) then
-        print(chat.header(addon.name):append(chat.message('/holdmap key <key>  |  /holdmap mod <shift|ctrl|alt|none>')));
+        print(chat.header(addon.name):append(chat.message('/holdmap key <key>  |  /holdmap mod <shift|ctrl|alt|none>  |  /holdmap mode <hold|toggle>')));
         return;
     end
-    print(chat.header(addon.name):append(chat.message('Hold ')):append(chat.success(bind_name())):append(chat.message(' to show the map.')));
+    local verb, rest = 'Hold ', ' to show the map.';
+    if (hm.settings.mode == 'toggle') then
+        verb, rest = 'Press ', ' to open or close the map.';
+    end
+    print(chat.header(addon.name):append(chat.message(verb)):append(chat.success(bind_name())):append(chat.message(rest)));
 end);

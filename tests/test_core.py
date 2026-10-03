@@ -16,11 +16,11 @@ DIK_ESCAPE, DIK_M, DIK_LSHIFT, DIK_LCTRL = 0x01, 0x32, 0x2A, 0x1D
 class Game:
     """A fake game: a fresh key buffer each poll, and a map menu that /map opens and Escape closes."""
 
-    def __init__(self, mod='shift', open_delay=2, esc_closes=True):
+    def __init__(self, mod='shift', open_delay=2, esc_closes=True, mode='hold'):
         self.lua = luajit21.LuaRuntime()
         self.lua.execute(f"package.path = [[{ADDON}]] .. '/?.lua;' .. package.path")
         self.core = self.lua.eval("require('core')")
-        self.s = self.core.new(DIK_M, mod)
+        self.s = self.core.new(DIK_M, mod, mode)
         self.new_buf = self.lua.eval("function () return require('ffi').new('uint8_t[256]') end")
         self.set = self.lua.eval("function (b, k, v) b[k] = v end")
         self.get = self.lua.eval("function (b, k) return b[k] end")
@@ -162,6 +162,50 @@ class CoreTests(unittest.TestCase):
         g.held = {DIK_LCTRL, DIK_M}
         g.poll(5)
         self.assertEqual(g.opens, 1)
+
+
+    def tap(self_, g, polls_after=20):
+        g.held = {DIK_LSHIFT, DIK_M}
+        g.poll(3)
+        g.held = set()
+        g.poll(polls_after)
+
+    def test_toggle_press_opens_press_again_closes(self):
+        g = Game(mode='toggle')
+        self.tap(g)
+        self.assertTrue(g.map_open, 'map should stay open after release in toggle mode')
+        self.assertEqual(g.esc_presses, 0)
+        self.tap(g)
+        self.assertFalse(g.map_open)
+        self.assertEqual(g.esc_presses, 1)
+        self.assertEqual(g.opens, 1)
+        self.tap(g)
+        self.assertTrue(g.map_open)
+        self.assertEqual(g.opens, 2)
+        self.assertFalse(any(g.seen_m))
+
+    def test_toggle_holding_does_not_repeat(self):
+        g = Game(mode='toggle')
+        g.held = {DIK_LSHIFT, DIK_M}
+        g.poll(120)
+        self.assertEqual(g.opens, 1)
+        self.assertTrue(g.map_open)
+        self.assertEqual(g.esc_presses, 0)
+
+    def test_toggle_second_press_before_map_shows_closes_it(self):
+        g = Game(mode='toggle', open_delay=15)
+        self.tap(g, polls_after=1)
+        self.tap(g, polls_after=60)
+        self.assertEqual(g.opens, 1)
+        self.assertFalse(g.map_open)
+        self.assertEqual(g.esc_presses, 1)
+
+    def test_toggle_closes_a_map_opened_by_hand(self):
+        g = Game(mode='toggle')
+        g.map_open = True
+        self.tap(g)
+        self.assertFalse(g.map_open)
+        self.assertEqual(g.opens, 0)
 
 
 if __name__ == '__main__':

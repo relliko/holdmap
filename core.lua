@@ -27,11 +27,13 @@ local OPEN_WAIT   = 1.0; -- seconds a release waits for a map that /map hasn't s
 core.MODS = MODS;
 core.DIK_ESCAPE = DIK_ESCAPE;
 
-function core.new(key, mod)
+function core.new(key, mod, mode)
     return {
         key = key,          -- DIK scan code of the bound key
         mod = mod,          -- 'shift', 'ctrl', 'alt' or 'none'
-        state = 'idle',     -- 'idle', 'holding', 'closing'
+        mode = mode or 'hold', -- 'hold' (open while held) or 'toggle' (each press opens or closes)
+        state = 'idle',     -- 'idle', 'holding', 'opening' (toggle), 'closing'
+        chord = false,      -- the chord was down last poll
         hide_key = false,   -- hide the bound key from the game until it is let go
         esc_left = 0,       -- polls of Escape still to hold down
         settle = 0,         -- polls still to wait after a press
@@ -66,8 +68,28 @@ function core.step(s, buf, map_open, chat_open, now)
     local key_down = down(buf, s.key);
     local chord = key_down and mod_down(s, buf) and not chat_open;
     local action = nil;
+    local pressed = chord and not s.chord;
+    s.chord = chord;
 
-    if (chord and s.state ~= 'holding') then
+    if (s.mode == 'toggle') then
+        if (pressed) then
+            -- Open unless the map is up or on its way; a press during a close opens it again.
+            local want_open = s.state == 'closing' or (s.state ~= 'opening' and not map_open);
+            s.hide_key = true;
+            s.esc_left, s.settle, s.presses = 0, 0, 0;
+            s.deadline = now + OPEN_WAIT;
+            if (want_open) then
+                if (not map_open) then
+                    action = 'open';
+                end
+                s.state = 'opening';
+            else
+                s.state = 'closing';
+            end
+        elseif (s.state == 'opening' and (map_open or now >= s.deadline)) then
+            s.state = 'idle';
+        end
+    elseif (chord and s.state ~= 'holding') then
         -- A fresh press, or a press again while a release is still closing the map.
         if (not map_open) then
             action = 'open';
