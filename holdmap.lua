@@ -10,7 +10,7 @@
 --]]
 
 addon.name    = 'holdmap';
-addon.author  = 'relli';
+addon.author  = 'Relli';
 addon.version = '0.2';
 addon.desc    = 'Shows the map while a key is held (or toggles it) and closes it on release.';
 addon.link    = '';
